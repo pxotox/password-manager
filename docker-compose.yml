@@ -4,9 +4,13 @@ services:
   frontend:
     build:
       context: .
+      ssh:
+        - default
     volumes:
       - .:/src/app
+      - ${SSH_AUTH_SOCK}:/ssh-agent
     ports:
       - 3000:3000
     environment:
       - CHOKIDAR_USEPOLLING=true
+      - SSH_AUTH_SOCK=/ssh-agent
