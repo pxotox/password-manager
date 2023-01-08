@@ -1,180 +1,87 @@
-import './App.css';
-import 'bulma/css/bulma.min.css';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { faSearch, faUserLock } from '@fortawesome/fontawesome-free-solid'
-import React, { useState, useEffect } from 'react';
-import { v4 as uuid } from 'uuid';
+import { Backdrop, Button, CircularProgress, Container, Dialog, DialogActions, DialogContent, DialogTitle, Fab, TextField } from '@mui/material';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
+import CssBaseline from '@mui/material/CssBaseline';
+import NavigationBar from './components/NavigationBar';
+import GoogleCredentials from './components/GoogleCredentials';
+import { useEffect, useState } from 'react';
+import GoogleLibraries from './components/GoogleLibraries';
+import GoogleLogin from './components/GoogleLogin';
+import GoogleDriveSelectFile from './components/GoogleDriveSelectFile';
+import MasterPassword from './components/MasterPassword';
 import CryptoJS from 'crypto-js'
-import Card from './components/Card'
-import Edit from './components/Edit'
+import { v4 as uuid } from 'uuid';
+import PasswordList from './components/PasswordList';
+import DetailView from './components/DetailView';
+import EditView from './components/EditView';
+import { Add } from '@mui/icons-material';
+
+const darkTheme = createTheme({
+  palette: {
+    mode: 'dark',
+  },
+});
 
 function App() {
-  const [searchTerm, settSearchTerm] = useState('')
-  const [editItem, setEditItem] = useState()
-  const [list, setList] = useState([])
-  const [googleApiLoaded, setGoogleApiLoaded] = useState(false)
-  const [googleGsiLoaded, setGoogleGsiLoaded] = useState(false)
-  const [accessToken, setAccessToken] = useState(JSON.parse(window.localStorage.getItem("googleToken")))
-  const [fileList, setFileList] = useState([])
-  const [selectedFile, setSelectedFile] = useState(null)
+  const [currentView, setCurrentView] = useState(null)
+  const [googleLibrariesLoaded, setGoogleLibrariesLoaded] = useState(false)
+  const [googleCredentials, setGoogleCredentials] = useState(JSON.parse(localStorage.getItem("googleCredentials")))
+  const [googleAccessToken, setGoogleAccessToken] = useState(JSON.parse(localStorage.getItem("googleAccessToken")))
+  const [userProfile, setUserProfile] = useState(null)
+  const [loginCallback, setLoginCallback] = useState(null)
+  const [googleDriveFile, setGoogleDriveFile] = useState(JSON.parse(localStorage.getItem("googleDriveFile")))
   const [encryptedPasswords, setEncryptedPasswords] = useState(null)
-  const [needUpdate, setNeedUpdate] = useState(false)
-  const [tokenClient, setTokenClient] = useState(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [user, setUser] = useState(null)
-  const [isFechingUser, setIsFecthingUser] = useState(false)
-  const [needLogin, setNeedLogin] = useState(false)
-  const [masterPasswordValue, setMasterPasswordValue] = useState(null)
   const [masterPassword, setMasterPassword] = useState(null)
-
-  const CLIENT_ID = '736779789478-rhpu58147alophaijnf4s2j0kuf59g9l.apps.googleusercontent.com';
-  const API_KEY = 'AIzaSyB_IdvfkFK4Ehvbz4tuuVUrUVDXKkNIMIU';
-
-  function updateFileContent(fileId, contentBlob, callback) {
-    var xhr = new XMLHttpRequest()
-    xhr.responseType = 'json'
-    xhr.onreadystatechange = () => {
-      if (xhr.readyState != XMLHttpRequest.DONE) return
-      callback(xhr.response)
-    }
-    xhr.open('PATCH', 'https://www.googleapis.com/upload/drive/v3/files/' + fileId + '?uploadType=media')
-    xhr.setRequestHeader('Authorization', 'Bearer ' + window.gapi.auth.getToken().access_token)
-    xhr.send(contentBlob)
-  }
+  const [passwordList, setPasswordList] = useState(null)
+  const [detailViewItem, setDetailViewItem] = useState(null)
+  const [editViewItem, setEditViewItem] = useState(null)
+  const [updateList, setUpdateList] = useState([])
+  const [uploadingList, setUploadingList] = useState(false)
+  const [isChangeMasterPasswordOpen, setIsChangeMasterPasswordOpen] = useState(false)
+  const [newMasterPassword, setNewMasterPassword] = useState('')
+  const [newMasterPasswordConfirmation, setNewMasterPasswordConfirmation] = useState('')
 
   useEffect(() => {
-    if (user !== null && selectedFile === null) {
-      getFilesFromDrive()
+    if (googleCredentials === null) setCurrentView("GOOGLE_CREDENTIALS")
+    else if (googleLibrariesLoaded) {
+      if (googleAccessToken === null) setCurrentView("GOOGLE_LOGIN")
+      else if (userProfile === null) fetchUser()
+      else if (googleDriveFile === null) setCurrentView("SELECT_FILE")
+      else if (encryptedPasswords === null) readFileFromDrive(googleDriveFile)
+      else if (masterPassword === null) setCurrentView("INPUT_PASSWORD")
+      else if (passwordList === null) decryptPasswords()
+      else if (editViewItem !== null) setCurrentView("EDIT_VIEW")
+      else if (detailViewItem !== null) setCurrentView("DETAIL_VIEW")
+      else setCurrentView("PASSWORD_LIST")
     }
-  }, [user])
+    else setCurrentView(null)
+  }, [googleCredentials, googleAccessToken, googleLibrariesLoaded, userProfile, googleDriveFile, encryptedPasswords, masterPassword, passwordList, detailViewItem, editViewItem])
 
   useEffect(() => {
-    if (needUpdate) {
-      console.log("Updating file in Google Drive")
-      let encryptedData = CryptoJS.AES.encrypt(JSON.stringify(list, null, 4), masterPassword)
-      let contentBlob = new  Blob([encryptedData.toString(CryptoJS.enc.base64)], {
-        'type': 'text/plain'
-      })
-      updateFileContent(selectedFile.id, contentBlob, (res) => {
-        console.log("File updated successfully")
-      })
-      setNeedUpdate(false)
-    }
-  }, [needUpdate])
+    localStorage.setItem("googleCredentials", JSON.stringify(googleCredentials))
+  }, [googleCredentials])
 
   useEffect(() => {
-    if (document.querySelector('script#gapi-script') === null) {
-      console.log("[GAPI] Injecting Google API client library")
-      const script = document.createElement('script')
-      script.id = 'gapi-script'
-      script.src = 'https://apis.google.com/js/api.js'
-      script.async = true
-      script.defer = true
-      script.onload = () => {
-        window.gapi.load('client', () => {
-          window.gapi.client.init({
-            apiKey: API_KEY,
-            discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
-          }).then(() => {
-            if (accessToken) {
-              console.log("[GAPI] Access token already available, setting in client")
-              window.gapi.client.setToken(accessToken)
-            }
-            console.log("[GAPI] Library fully injected")
-            setGoogleApiLoaded(true)  
-          })
-        });
-      }
-      document.body.append(script)
-    }
-
-    if (document.querySelector('script#gsi-script') === null) {
-      console.log("[GSI] Injecting Google authentication library")
-      const script = document.createElement('script')
-      script.id = 'gsi-script'
-      script.src = 'https://accounts.google.com/gsi/client'
-      script.async = true
-      script.defer = true
-      script.onload = () => {
-        const tc = window.google.accounts.oauth2.initTokenClient({
-          client_id: CLIENT_ID,
-          scope: 'https://www.googleapis.com/auth/drive',
-          callback: (resp) => {
-            if (resp.error !== undefined) {
-              console.log("[GSI] ", resp.error)
-            } else {
-              window.localStorage.setItem("googleToken", JSON.stringify(window.gapi.client.getToken()))
-              setAccessToken(window.gapi.client.getToken())
-              fetchUser()
-            }
-          }
-        });
-  
-        setTokenClient(tc)
-        console.log("[GSI] Library fully injected")
-        setGoogleGsiLoaded(true)
-      }
-      document.body.append(script)
-    }
-  }, []);
+    localStorage.setItem("googleAccessToken", JSON.stringify(googleAccessToken))
+  }, [googleAccessToken])
 
   useEffect(() => {
-    setIsLoading(!(googleApiLoaded && googleGsiLoaded))
-  }, [googleApiLoaded, googleGsiLoaded])
-
+    localStorage.setItem("googleDriveFile", JSON.stringify(googleDriveFile))
+  }, [googleDriveFile])
 
   const fetchUser = async () => {
-    if (accessToken === null) {
-      setNeedLogin(true)
-    } else {
-      console.log("[fetchUser] Checking if access token is valid")
-      try {
-        setIsFecthingUser(true)
-        const response = await window.gapi.client.drive.about.get({
-          'fields': 'user'
-        });
-        setIsFecthingUser(false)
-        if (response.status === 200) {
-          setUser(response.result.user)
-          setSelectedFile(JSON.parse(window.localStorage.getItem("selectedFile")))
-          console.log("[fetchUser] User successfully fetched")
-          setNeedLogin(false)
-        } else {
-          setNeedLogin(true)
-        }
-      } catch (err) {
-        setIsFecthingUser(false)
-        setNeedLogin(true)
+    console.log("[fetchUser] Checking if access token is valid")
+    try {
+      const response = await window.gapi.client.drive.about.get({
+        'fields': 'user'
+      });
+      if (response.status === 200) {
+        setUserProfile(response.result.user)
       }
+    } catch (err) {
+      console.log("[fetchUser] Failed to get user")
+      setGoogleAccessToken(null)
     }
   }
-
-  useEffect(() => {
-    if (!isLoading && user === null && isFechingUser === false) {
-      fetchUser()
-    }
-  }, [isLoading])
-
-  useEffect(() => {
-    if (window.gapi) {
-      window.gapi.client.setToken(accessToken)
-      fetchUser()
-    }
-  }, [accessToken])
-
-  useEffect(() => {
-    if (selectedFile) {
-      window.localStorage.setItem("selectedFile", JSON.stringify(selectedFile))
-      readFileFromDrive(selectedFile.id)
-    }
-  }, [selectedFile])
-
-  useEffect(() => {
-    if (masterPassword && encryptedPasswords) {
-      const decryptedData = CryptoJS.AES.decrypt(encryptedPasswords, masterPassword)
-      setList(JSON.parse(decryptedData.toString(CryptoJS.enc.Utf8)))
-    }
-  }, [masterPassword])
 
   const readFileFromDrive = async (fileId) => {
     try {
@@ -186,189 +93,193 @@ function App() {
 
       setEncryptedPasswords(response.body)
     } catch (err) {
-      setSelectedFile(null)
-      console.log("[readFileFromDrive]", err)
+      setGoogleDriveFile(null)
+      console.log("[readFileFromDrive] Error reading file from Google Drive", err)
     }
   }
 
-  const findItemById = (id) => {
-    let indexfound = null
-
-    list.every((item, index) => {
-      if (item.id === id) {
-        indexfound = index
-        return false
-      }
-      return true
-    })
-
-    return [indexfound !== null ? list[indexfound] : null, indexfound]
+  const updateFileContent = (fileId, contentBlob, callback) => {
+    console.log("Uploading content")
+    var xhr = new XMLHttpRequest()
+    xhr.responseType = 'json'
+    xhr.onreadystatechange = () => {
+      if (xhr.readyState != XMLHttpRequest.DONE) return
+      callback(xhr.response)
+    }
+    xhr.open('PATCH', 'https://www.googleapis.com/upload/drive/v3/files/' + fileId + '?uploadType=media')
+    xhr.setRequestHeader('Authorization', 'Bearer ' + window.gapi.auth.getToken().access_token)
+    xhr.send(contentBlob)
   }
 
-  const handleChangeItem = (item) => {
-    let data = [...list]
+  const updateFileInDrive = () => {
+    if (uploadingList || updateList.length === 0) return
+    console.log("Updating list in drive")
+    setUploadingList(true)
 
-    let [listItem, index] = findItemById(item.id)
-    if (listItem) data[index] = item
-    else data.push(item)
+    const data = updateList.shift()
+    setUpdateList(updateList)
 
-    setList(data)
-    setEditItem(null)
-    setNeedUpdate(true)
-  }
-
-  const handleCancel = () => {
-    setEditItem(null)
-  }
-
-  const addNewItem = () => {
-    if (!editItem) setEditItem({id: uuid(), Name: "", Username: "", _Password: "" })
-  }
-
-  const handleEditItem = (id) => {
-    list.forEach((listItem, index) => {
-      if (listItem.id === id) {
-        setEditItem(list[index])
-      }
+    const encryptedData = CryptoJS.AES.encrypt(JSON.stringify(data, null, 4), masterPassword)
+    const contentBlob = new Blob([encryptedData.toString(CryptoJS.enc.base64)], {'type': 'text/plain'})
+    updateFileContent(googleDriveFile, contentBlob, (res) => {
+      console.log("File updated successfully")
+      setUploadingList(false)
+      updateFileInDrive()
     })
   }
 
-  const handleDeleteItem = (id) => {
-    setList(list.filter((listItem, index) => listItem.id !== id))
-    setNeedUpdate(true)
-  }
+  useEffect(() => {
+    if (updateList.length > 0) {
+      updateFileInDrive()
+    }
+  }, [updateList])
 
-  const handleSearch = (e) => {
-    settSearchTerm(e.target.value.toLowerCase())
-  }
-
-  const getFilterestList = () => {
-    return list.filter((item) => {
-      return (searchTerm.length <= 0) || (('Name' in item) && item.Name.toLowerCase().includes(searchTerm))
-    })
-  }
-
-  const getFilesFromDrive = async () => {
+  const decryptPasswords = () => {
     try {
-      console.log("[getFilesFromDrive] Getting file list from Google Drive")
-      const response = await window.gapi.client.drive.files.list({
-        'pageSize': 10
-      });
-      const files = response.result.files;
-      setFileList(files)
-    } catch (err) {
-      console.log("[getFilesFromDrive]", err)
+      const decryptedData = CryptoJS.AES.decrypt(encryptedPasswords, masterPassword)
+      const passwordList = JSON.parse(decryptedData.toString(CryptoJS.enc.Utf8))
+      if (Array.isArray(passwordList)) setPasswordList(passwordList)
+      else setMasterPassword(null)
+    } catch (error) {
+      setMasterPassword(null)
     }
   }
 
-  const handleLoginClick = () => {
-    tokenClient.requestAccessToken({prompt: ''});
+  const resetAll = () => {
+    setGoogleAccessToken(null)
+    setGoogleCredentials(null)
+    setGoogleLibrariesLoaded(false)
+    setPasswordList(null)
+    setMasterPassword(null)
+    setEncryptedPasswords(null)
+    setGoogleDriveFile(null)
+    setGoogleAccessToken(null)
+    setUserProfile(null)
+    setDetailViewItem(null)
+    setEditViewItem(null)
+  }
+
+  const saveGoogleCredentials = (apiKey, clientId) => setGoogleCredentials({apiKey: apiKey, clientId: clientId})
+ 
+  const onLibrariesLoaded = (callback) => {
+    setLoginCallback({ fn: callback })
+    setGoogleLibrariesLoaded(true)
+  }
+  const onLibrariesError = () => resetAll()
+  const onAccessTokenChange = (accessToken) => setGoogleAccessToken(accessToken)
+  const handleLoginOnClick = () => loginCallback.fn()
+  const handleSelectFile = (fileId) => setGoogleDriveFile(fileId)
+  const handleMasterPasswordChange = (password) => setMasterPassword(password)
+  const handleItemClick = (item) => setDetailViewItem(item)
+  const handleDetailViewBack = () => setDetailViewItem(null)
+  const handleEditClick = () => setEditViewItem(detailViewItem)
+  const handleDeleteClick = (item) => {
+    const newPasswordList = passwordList.filter((listItem) => item.id !== listItem.id)
+    setPasswordList(newPasswordList)
+    //setUpdateList([...updateList, newPasswordList])
+    setDetailViewItem(null)
+  }
+  const handleEditViewCancel = () => setEditViewItem(null)
+  const handleEditViewSave = (item) => {
+    let found = false
+    const newPasswordList = passwordList.map((listItem) => {
+      if (listItem.id === item.id) {
+        found = true
+        return item
+      }
+      return listItem
+    })
+    if (!found) newPasswordList.push(item)
+
+    setPasswordList(newPasswordList)
+    setUpdateList([...updateList, newPasswordList])
+    setDetailViewItem(item)
+    setEditViewItem(null)
+  }
+
+  const handleAdd = () => {
+    setEditViewItem({id: uuid(), Name: "", Username: "", _Password: "" })
   }
 
   const logout = () => {
-    setAccessToken(null)
-    setUser(null)
-    setSelectedFile(null)
-    setList([])
-    setFileList([])
-    setEncryptedPasswords(null)
+    setGoogleAccessToken(null)
+    setUserProfile(null)
+    setPasswordList(null)
     setMasterPassword(null)
-    window.localStorage.removeItem("googleToken")
-    window.localStorage.removeItem("selectedFile")
-    setNeedLogin(true)
+    setEncryptedPasswords(null)
+    setGoogleDriveFile(null)
+    setDetailViewItem(null)
+    setEditViewItem(null)    
   }
 
-  const handlePasswordChange = (e) => {
-    setMasterPasswordValue(e.target.value)
+  const handleChangeMasterPassword = () => {
+    if (newMasterPassword === newMasterPasswordConfirmation) {
+      setIsChangeMasterPasswordOpen(false)
+      setMasterPassword(newMasterPassword)
+      setUpdateList([...updateList, passwordList])
+    }
   }
 
-  const handlePasswordSubmit = (e) => {
-    setMasterPassword(masterPasswordValue)
-    e.preventDefault()
+  const handleChangeMasterPasswordClick = () => {
+    setNewMasterPassword('')
+    setNewMasterPasswordConfirmation('')
+    setIsChangeMasterPasswordOpen(true)
   }
 
   return (
-    <div className="App container">
-      { isLoading && <div className="block has-text-centered">Loading...</div> }
-      { isFechingUser && <div className="block has-text-centered">Fetching user...</div> }
+    <ThemeProvider theme={darkTheme}>
+      <CssBaseline />
+      <Container>
+        <NavigationBar userProfile={userProfile} onLogoutClick={logout} onResetClick={resetAll} onChangeMasterPasswordClick={handleChangeMasterPasswordClick} />
 
+        <Fab color="secondary" onClick={handleAdd} sx={{ margin: 0, top: 'auto', right: 20, bottom: 20, left: 'auto', position: 'fixed' }}>
+          <Add />
+        </Fab>
 
-      <nav className="navbar" role="navigation" aria-label="main navigation">
-        <div className="navbar-brand">
-          <a className="navbar-item" href="#">
-            Manager
-          </a>
+        {currentView === "GOOGLE_CREDENTIALS" && <GoogleCredentials onSaveCredentials={saveGoogleCredentials} />}
+        {currentView === "GOOGLE_LOGIN" && <GoogleLogin onClick={handleLoginOnClick} />}
+        {currentView === "SELECT_FILE" && <GoogleDriveSelectFile onSelectFile={handleSelectFile} />}
+        {currentView === "INPUT_PASSWORD" && <MasterPassword onSubmit={handleMasterPasswordChange} />}
+        {currentView === "PASSWORD_LIST" && <PasswordList list={passwordList} onItemClick={handleItemClick} />}
+        {currentView === "DETAIL_VIEW" && detailViewItem && <DetailView item={detailViewItem} onBack={handleDetailViewBack} onEditClick={handleEditClick} onDeleteClick={handleDeleteClick} />}
+        {currentView === "EDIT_VIEW" && editViewItem && <EditView item={editViewItem} onCancel={handleEditViewCancel} onSave={handleEditViewSave} />}
 
-          <a role="button" className="navbar-burger" aria-label="menu" aria-expanded="false" data-target="navbarBasicExample">
-            <span aria-hidden="true"></span>
-            <span aria-hidden="true"></span>
-            <span aria-hidden="true"></span>
-          </a>
-        </div>
+        <Backdrop sx={{ color: '#fff', zIndex: (theme) => theme.zIndex.drawer + 1 }} open={currentView === null}>
+          <CircularProgress color="inherit" />
+        </Backdrop>
 
-        <div id="navbarBasicExample" className="navbar-menu">
-          <div className="navbar-end">
-            <div className="navbar-item">
-              <div className="buttons">
-                { masterPassword && <button className="button is-primary" onClick={addNewItem}>
-                  <strong>New</strong>
-                </button> }
-              </div>
-            </div>
-          </div>
-        </div>
-      </nav>
-      
-      { needLogin && <button onClick={handleLoginClick}>Log in</button> }
-      
-      { user && !selectedFile &&
-        <table className="table">
-          <tbody>
-          {fileList.map((file, k) => {
-            return <tr key={file.id}>
-              <td>{file.id}</td>
-              <td>{file.name}</td>
-              <td><button onClick={() => setSelectedFile(file)}>Use</button></td>
-            </tr>
-          })}
-          </tbody>
-        </table>
-      }
+        <Dialog open={isChangeMasterPasswordOpen} onClose={() => setIsChangeMasterPasswordOpen(false)}>
+          <DialogTitle>Change master password</DialogTitle>
+          <DialogContent>
+            <TextField
+              onChange={(e) => setNewMasterPassword(e.target.value)}
+              type="password"
+              margin="dense"
+              value={newMasterPassword}
+              autoFocus
+              label="New master password"
+              fullWidth
+            />
+            <TextField
+              onChange={(e) => setNewMasterPasswordConfirmation(e.target.value)}
+              type="password"
+              margin="dense"
+              value={newMasterPasswordConfirmation}
+              autoFocus
+              label="New master password confirmation"
+              fullWidth
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setIsChangeMasterPasswordOpen(false)}>Cancel</Button>
+            <Button onClick={handleChangeMasterPassword}>Save</Button>
+          </DialogActions>
+        </Dialog>
 
-      { editItem && masterPassword && <Edit item={editItem} onChange={handleChangeItem} onCancel={handleCancel} /> }
-      
-      { encryptedPasswords && !masterPassword && <form className="field" onSubmit={handlePasswordSubmit}>
-        <p className="control has-icons-right">
-          <input className="input" type="password" placeholder="Type your master password" onChange={handlePasswordChange} />
-          <span className="icon is-small is-right">
-            <FontAwesomeIcon icon={faUserLock} />
-          </span>
-        </p>
-      </form> }
+        {googleCredentials && <GoogleLibraries credentials={googleCredentials} accessToken={googleAccessToken} onLoad={onLibrariesLoaded} onError={onLibrariesError} onAccessTokenChange={onAccessTokenChange} />}
 
-
-      { list && list.length > 0 && <div className="field">
-        <p className="control has-icons-right">
-          <input className="input" type="email" placeholder="Search..." onChange={(e) => handleSearch(e)} />
-          <span className="icon is-small is-right">
-            <FontAwesomeIcon icon={faSearch} />
-          </span>
-        </p>
-      </div> }
-
-      {getFilterestList().map((item, k) => <Card key={k} item={item} onEditClick={handleEditItem} onDeleteClick={handleDeleteItem} />)}
-
-      { selectedFile &&
-        <div>
-          <p>{selectedFile.name} - {selectedFile.id}</p>
-        </div>
-      }
-      { user &&
-        <div>
-          <p>Logged as {user.displayName} ({user.emailAddress}) <button onClick={logout}>Logout</button></p>
-        </div>
-      }
-    </div>
+      </Container>
+    </ThemeProvider>
   );
 }
 
