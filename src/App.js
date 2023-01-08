@@ -176,7 +176,7 @@ function App() {
   const handleDeleteClick = (item) => {
     const newPasswordList = passwordList.filter((listItem) => item.id !== listItem.id)
     setPasswordList(newPasswordList)
-    //setUpdateList([...updateList, newPasswordList])
+    setUpdateList([...updateList, newPasswordList])
     setDetailViewItem(null)
   }
   const handleEditViewCancel = () => setEditViewItem(null)
