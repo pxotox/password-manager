@@ -1,5 +1,5 @@
 import { Password } from "@mui/icons-material";
-import { Avatar, Box, List, ListItemAvatar, ListItemButton, ListItemText, TextField } from "@mui/material";
+import { Avatar, List, ListItemAvatar, ListItemButton, ListItemText, TextField, Card, CardContent } from "@mui/material";
 import { Component } from "react";
 
 class PasswordList extends Component {
@@ -17,7 +17,7 @@ class PasswordList extends Component {
 
   getFilterestList() {
     return this.state.list.filter((item) => {
-      return (this.state.searchTerm.length <= 0) || (('Name' in item) && item.Name.toLowerCase().includes(this.state.searchTerm))
+      return (this.state.searchTerm.length <= 0) || (('Name' in item) && item.Name.toLowerCase().includes(this.state.searchTerm.toLocaleLowerCase()))
     })
   }
 
@@ -27,21 +27,23 @@ class PasswordList extends Component {
 
 
 	render() {
-		return <Box sx={{ mt: 2 }}>
-			<TextField fullWidth label="Type to search" value={this.state.searchTerm} onChange={this.handleChange} />
-			<List>
-				{this.getFilterestList().map((item) => {
-					return <ListItemButton key={item.id} sx={{ width: "100%" }} onClick={() => { this.props.onItemClick(item) }}>
-						<ListItemAvatar>
-							<Avatar>
-								<Password />
-							</Avatar>
-						</ListItemAvatar>
-						<ListItemText primary={item.Name} secondary={item.Username} />
-					</ListItemButton>
-				})}
-			</List>
-		</Box>
+		return <Card>
+			<CardContent>
+        <TextField fullWidth label="Type to search" value={this.state.searchTerm} onChange={this.handleChange} />
+        <List>
+          {this.getFilterestList().map((item) => {
+            return <ListItemButton key={item.id} sx={{ width: "100%" }} onClick={() => { this.props.onItemClick(item) }}>
+              <ListItemAvatar>
+                <Avatar>
+                  <Password />
+                </Avatar>
+              </ListItemAvatar>
+              <ListItemText primary={item.Name} secondary={item.Username} />
+            </ListItemButton>
+          })}
+        </List>
+			</CardContent>
+		</Card>
 	}
 }
 

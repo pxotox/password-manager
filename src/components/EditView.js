@@ -14,7 +14,9 @@ class EditView extends Component {
           name: item[0].replace('_', ''),
           value: item[1],
           secure: item[0].startsWith('_'),
-          visible: false
+          visible: false,
+          multiline: /\r|\n/.exec(item[1]),
+          autoFocus: false
         }
       })
     }
@@ -27,6 +29,7 @@ class EditView extends Component {
     this.handleRemove = this.handleRemove.bind(this)
     this.handleMoveDown = this.handleMoveDown.bind(this)
     this.handleMoveUp = this.handleMoveUp.bind(this)
+    this.handleKeyDown = this.handleKeyDown.bind(this)
   }
 
   toggleVisibility(index) {
@@ -81,6 +84,14 @@ class EditView extends Component {
     this.setState({values: this.state.values})
   }
 
+  handleKeyDown(e, index) {
+    if (e.ctrlKey && (e.keyCode === 10 || e.keyCode === 13)) {
+      this.state.values[index].multiline = !this.state.values[index].multiline
+      this.state.values[index].autoFocus = true
+      this.setState({values: this.state.values})      
+    }
+  }
+
   render() {
     return <Box>
       <Card>
@@ -99,8 +110,12 @@ class EditView extends Component {
                 <InputLabel>{item.name}</InputLabel>
                 <OutlinedInput
                   onChange={(e) => this.handleChange(e, index) }
+                  onKeyDown={(e) => this.handleKeyDown(e, index) }
                   type={item.secure && !item.visible ? 'password' : 'text'}
                   value={item.value}
+                  multiline={item.multiline}
+                  rows={6}
+                  autoFocus={item.autoFocus}
                   endAdornment={
                     <InputAdornment position="end">
                       {item.secure && <IconButton

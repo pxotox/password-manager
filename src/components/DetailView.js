@@ -57,7 +57,7 @@ class DetailView extends Component {
               const isSecure = value[0].startsWith('_')
               const inVisibilityList = this.state.visibilityList.indexOf(value[0]) === -1
               const content = isSecure &&  inVisibilityList ? 'Content is hidden' : value[1]
-              const valueStyle = isSecure &&  inVisibilityList ? {fontStyle: 'italic'} : {}
+              const valueStyle = isSecure &&  inVisibilityList ? {fontStyle: 'italic'} : {whiteSpace: 'pre'}
 
               return <ListItem
                 key={key}
